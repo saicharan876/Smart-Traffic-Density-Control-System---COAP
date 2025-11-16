@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Poller — Live</title>
+  <style>
+    body { font-family: Inter, system-ui, Arial; max-width:720px; margin:28px; }
+    h1 { margin-bottom:8px; }
+    .card { padding:14px; border-radius:8px; box-shadow:0 6px 18px rgba(0,0,0,0.06); margin-bottom:12px; }
+    .lane { display:flex; justify-content:space-between; align-items:center; font-size:18px; }
+    .value { font-weight:700; font-size:20px; }
+    .status { padding:4px 8px; border-radius:6px; color:#fff; font-weight:600; }
+    .full { background:#e53935; } .free { background:#43a047; } .unknown { background:#6c757d; }
+    .small { font-size:13px; color:#666; margin-top:8px; }
+  </style>
+</head>
+<body>
+  <h1>Lane readings — Live</h1>
+  <div id="container">
+    <div class="card lane" id="lane1"><span>Lane 1</span><span class="value">—</span><span class="status unknown">N/A</span></div>
+    <div class="card lane" id="lane2"><span>Lane 2</span><span class="value">—</span><span class="status unknown">N/A</span></div>
+    <div class="card lane" id="lane3"><span>Lane 3</span><span class="value">—</span><span class="status unknown">N/A</span></div>
+    <div class="card lane" id="lane4"><span>Lane 4</span><span class="value">—</span><span class="status unknown">N/A</span></div>
+  </div>
+
+  <div class="small">Auto-refresh every <span id="interval">1</span>s — connected to <code>/latest</code></div>
+
+  <script>
+    const INTERVAL_MS = 1000; // change if needed
+    const THRESHOLD = 10;     // same threshold as your ESP logic (cm)
+
+    async function fetchLatest() {
+      try {
+        const res = await fetch('/latest', {cache: 'no-store'});
+        if (res.status === 204) return null;
+        if (!res.ok) throw new Error('HTTP ' + res.status);
+        return await res.json();
+      } catch (e) {
+        console.warn('Fetch /latest failed:', e.message || e);
+        return null;
+      }
+    }
+
+    function render(obj) {
+      for (let i = 1; i <= 4; i++) {
+        const el = document.getElementById('lane' + i);
+        const valEl = el.querySelector('.value');
+        const statusEl = el.querySelector('.status');
+
+        if (!obj) {
+          valEl.textContent = '—';
+          statusEl.textContent = 'N/A';
+          statusEl.className = 'status unknown';
+          continue;
+        }
+
+        // if object has lane keys (lane1..lane4), use them; otherwise show fallback value
+        const key = 'lane' + i;
+        if (obj.hasOwnProperty(key)) {
+          const v = Number(obj[key]);
+          valEl.textContent = Number.isFinite(v) ? `${v} cm` : String(obj[key]);
+          if (!Number.isFinite(v)) {
+            statusEl.textContent = 'UNKNOWN';
+            statusEl.className = 'status unknown';
+          } else if (v < THRESHOLD) {
+            statusEl.textContent = 'FULL';
+            statusEl.className = 'status full';
+          } else {
+            statusEl.textContent = 'FREE';
+            statusEl.className = 'status free';
+          }
+        } else if (obj.value) {
+          valEl.textContent = obj.value;
+          statusEl.textContent = '';
+          statusEl.className = 'status unknown';
+        } else {
+          valEl.textContent = JSON.stringify(obj);
+          statusEl.textContent = '';
+          statusEl.className = 'status unknown';
+        }
+      }
+    }
+
+    // polling loop
+    async function loop() {
+      const latest = await fetchLatest();
+      render(latest);
+      setTimeout(loop, INTERVAL_MS);
+    }
+
+    // start
+    document.getElementById('interval').textContent = (INTERVAL_MS/1000);
+    loop();
+  </script>
+</body>
+</html>
